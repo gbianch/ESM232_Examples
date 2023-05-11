@@ -81,7 +81,7 @@ relerr(m=sager$model, o=sager$obs)*100
 
 cper(m=sager$model, o=sager$obs, weight.nse=0.8)
 
-
+cor(sager$model, sager$obs)
 ```
 
 # Scale and subsetting
@@ -118,6 +118,36 @@ cor(sager_aug$model, sager_aug$obs)
 * Think of a new metric that might be interesting from a particular environmental context
 
 * Code that metric as a function - and then apply it
+
+```{r}
+
+compute_extremes <- function(m=sager$model, o=sager$obs, wy=sager$wy, wts=c(0.5, 0.5)){
+   flow = cbind.data.frame(m, o, wy) 
+   wy_flow = flow %>% 
+     group_by(wy) %>% 
+     summarize(min_obs = min(o),
+               min_mod = min(m),
+               max_obs = max(o),
+               max_mod = max(m))
+   
+   # 1 over mean error so higher values are better
+   min_err = mean(wy_flow$min_mod - wy_flow$min_obs)
+   max_err = mean(wy_flow$max_mod - wy_flow$max_obs)
+   
+   min_err_trans = 1 - min(1.0, abs(min_err))
+   max_err_trans = 1 - min(1.0, abs(max_err))
+   
+   combined = wts[1]*min_err_trans + wts[2]*max_err_trans
+   
+   
+   return(list(min_err_trans, max_err_trans, combined))
+  
+}
+
+ compute_extremes()
+ 
+```
+
 
 # Using multiple metrics. 
 
@@ -335,6 +365,30 @@ On the canvas survey - add the 'best' parameter set number (so we can compare ho
 
 ```{r your_turn_part2}
 # add your code here (or start new file if you want)
+# subset for split sample calibration
+short_msage = subset(msage, wy < 1975)
+
+source("../R/compute_extremes.R")
+res = short_msage %>% select(-date, -month, -day, -year, -wy, -obs ) %>%
+  map_df(compute_lowflowmetrics_all, o=short_msage$obs, month=short_msage$month, day=short_msage$day, year=short_msage$year, wy=short_msage$wy)
+# note here we use map_df to get a dataframe back 
+
+
+# interesting to look at range of metrics - could use this to decide on
+# acceptable values
+summary(res)
+# we can add a row that links with simulation number
+res$sim = snames
+
+# graph range of performance measures
+resl = res %>% pivot_longer(-sim, names_to="metric", values_to="value")
+
+ggplot(resl, aes(metric, value))+geom_boxplot()+facet_wrap(~metric, scales="free")
+
+
+# select the best one based on the combined metric
+best = res[which.max(res$combined),]
+
 
 ```
 
